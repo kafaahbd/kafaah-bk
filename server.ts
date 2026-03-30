@@ -20,7 +20,7 @@ async function startServer() {
   app.use(express.static(distPath));
 
   // Catch-all route to handle SPA client-side routing
-  app.get("*", (req, res) => {
+  app.get("{*}", (req, res) => {
     res.sendFile(path.join(distPath, "index.html"));
   });
 
