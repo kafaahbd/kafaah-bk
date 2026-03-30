@@ -50,7 +50,7 @@ router.post("/join", upload.single("image"), async (req, res) => {
 
     // 1. Send email to Admin
     await resendClient.emails.send({
-      from: "Join Form <onboarding@resend.dev>", // Replace with noreply@kafaahbd.com when domain is verified
+      from: "Join Form <noreply@kafaahbd.com>", // Replace with noreply@kafaahbd.com when domain is verified
       to: "kafaahbd@gmail.com",
       subject: `New Join Request from ${fullName}`,
       html: `
@@ -75,7 +75,7 @@ router.post("/join", upload.single("image"), async (req, res) => {
 
     // 2. Send confirmation email to User
     await resendClient.emails.send({
-      from: "Kafaah Team <onboarding@resend.dev>", // Replace with noreply@kafaahbd.com when domain is verified
+      from: "Kafaah Team <noreply@kafaahbd.com>", // Replace with noreply@kafaahbd.com when domain is verified
       to: email,
       subject: "Thank you for joining Kafaah!",
       html: `
