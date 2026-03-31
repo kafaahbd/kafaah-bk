@@ -49,7 +49,7 @@ router.post("/join", upload.single("image"), async (req, res) => {
     const resendClient = getResend();
 
     // 1. Send email to Admin
-    await resendClient.emails.send({
+    const adminEmailResult = await resendClient.emails.send({
       from: "Join Form <noreply@kafaahbd.com>", // Replace with noreply@kafaahbd.com when domain is verified
       to: "kafaahbd@gmail.com",
       subject: `New Join Request from ${fullName}`,
@@ -73,8 +73,13 @@ router.post("/join", upload.single("image"), async (req, res) => {
       ],
     });
 
+    if (adminEmailResult.error) {
+      console.error("Resend Admin Email Error:", adminEmailResult.error);
+      throw new Error(adminEmailResult.error.message || "Failed to send email to admin");
+    }
+
     // 2. Send confirmation email to User
-    await resendClient.emails.send({
+    const userEmailResult = await resendClient.emails.send({
       from: "Kafaah Team <noreply@kafaahbd.com>", // Replace with noreply@kafaahbd.com when domain is verified
       to: email,
       subject: "Thank you for joining Kafaah!",
@@ -97,6 +102,13 @@ router.post("/join", upload.single("image"), async (req, res) => {
         <p>Best regards,<br/>The Kafaah Team</p>
       `,
     });
+
+    if (userEmailResult.error) {
+      console.error("Resend User Email Error:", userEmailResult.error);
+      // We might not want to fail the whole request if just the confirmation email fails,
+      // but for now we'll throw to be safe and let the user know.
+      throw new Error(userEmailResult.error.message || "Failed to send confirmation email");
+    }
 
     res.status(200).json({ success: true, message: "Form submitted successfully" });
   } catch (error: any) {
