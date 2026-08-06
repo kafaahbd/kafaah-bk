@@ -5,7 +5,7 @@ import { Resend } from "resend";
 const router = Router();
 const upload = multer({ 
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
 let resend: Resend | null = null;
@@ -19,17 +19,18 @@ function getResend() {
   return resend;
 }
 
-router.post("/join", upload.single("image"), async (req, res) => {
+router.post("/join", upload.fields([
+  { name: "image", maxCount: 1 },
+  { name: "cv", maxCount: 1 }
+]), async (req, res) => {
   try {
     const {
       fullNameEn,
-      fullNameBn,
       email,
       phone,
-      whatsapp,
+      gender,
       emergencyContact,
       dob,
-      nidOrBirthReg,
       bloodGroup,
       presentAddress,
       permanentAddress,
@@ -40,6 +41,7 @@ router.post("/join", upload.single("image"), async (req, res) => {
       passingYear,
       sscGpa,
       hscGpa,
+      isNotMuslim,
       islamicKnowledgeLevel,
       quranRecitation,
       madrasaBackground,
@@ -48,7 +50,6 @@ router.post("/join", upload.single("image"), async (req, res) => {
       skillProficiencies,
       portfolioLink,
       yearsOfExp,
-      softSkills,
       primaryRole,
       secondaryRole,
       preferredDepartment,
@@ -62,9 +63,6 @@ router.post("/join", upload.single("image"), async (req, res) => {
       whyJoinKafaah,
       contributionVision,
       twoYearGoal,
-      pcSpecs,
-      internetType,
-      powerBackup,
       linkedin,
       facebook,
       github,
@@ -74,11 +72,13 @@ router.post("/join", upload.single("image"), async (req, res) => {
       additionalComments
     } = req.body;
 
-    const file = req.file;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const imageFile = files?.["image"]?.[0];
+    const cvFile = files?.["cv"]?.[0];
 
     // Primary Validation
-    if (!fullNameEn || !email || !phone || !primaryRole || !file) {
-      return res.status(400).json({ error: "Required fields (Full Name, Email, Phone, Role, Profile Picture) are missing." });
+    if (!fullNameEn || !email || !phone || !primaryRole || !imageFile) {
+      return res.status(400).json({ error: "Required fields (Full Name, Email, Phone/WhatsApp, Primary Role, Profile Picture) are missing." });
     }
 
     // Safely parse JSON string fields
@@ -92,8 +92,6 @@ router.post("/join", upload.single("image"), async (req, res) => {
 
     const parsedPresentAddr = parseJSON(presentAddress);
     const parsedPermanentAddr = parseJSON(permanentAddress);
-    const parsedProficiencies = parseJSON(skillProficiencies);
-    const parsedSoftSkills = parseJSON(softSkills);
 
     const resendClient = getResend();
 
@@ -102,23 +100,24 @@ router.post("/join", upload.single("image"), async (req, res) => {
       return `${addr.village || ''}, ${addr.union || ''}, ${addr.thana || ''}, ${addr.district || ''}, ${addr.division || ''} - ${addr.postCode || ''}`;
     };
 
+    const isNonMuslimBool = isNotMuslim === "true" || isNotMuslim === true;
+
     const adminHtmlContent = `
-      <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-w: 800px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; padding: 24px;">
+      <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 800px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; padding: 24px;">
         <div style="background-color: #059669; padding: 20px; border-radius: 8px; text-align: center; color: #fff;">
           <h1 style="margin: 0; font-size: 24px;">New Kafa'ah Team Join Request</h1>
-          <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.9;">14-Section Comprehensive Application Digest</p>
+          <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.9;">Comprehensive Application Digest</p>
         </div>
 
         <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px; margin-top: 24px;">1. Basic Information</h2>
-        <p><strong>Full Name (EN):</strong> ${fullNameEn}</p>
-        <p><strong>Full Name (BN):</strong> ${fullNameBn || 'N/A'}</p>
+        <p><strong>Full Name:</strong> ${fullNameEn}</p>
         <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Phone:</strong> ${phone}</p>
-        <p><strong>WhatsApp:</strong> ${whatsapp || 'N/A'}</p>
+        <p><strong>Phone / WhatsApp:</strong> ${phone}</p>
+        <p><strong>Gender:</strong> ${gender || 'N/A'}</p>
         <p><strong>Emergency Contact:</strong> ${emergencyContact || 'N/A'}</p>
         <p><strong>Date of Birth:</strong> ${dob}</p>
-        <p><strong>NID / Birth Reg:</strong> ${nidOrBirthReg || 'N/A'}</p>
         <p><strong>Blood Group:</strong> ${bloodGroup || 'N/A'}</p>
+        <p><strong>CV Attached:</strong> ${cvFile ? 'Yes (' + cvFile.originalname + ')' : 'No'}</p>
 
         <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px;">2. Address Details</h2>
         <p><strong>Present Address:</strong> ${formatAddress(parsedPresentAddr)}</p>
@@ -134,13 +133,17 @@ router.post("/join", upload.single("image"), async (req, res) => {
         <p><strong>HSC / Alim GPA:</strong> ${hscGpa || 'N/A'}</p>
 
         <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px;">4. Islamic Knowledge & Ethics</h2>
-        <p><strong>Knowledge Level:</strong> ${islamicKnowledgeLevel || 'N/A'}</p>
-        <p><strong>Quran Recitation:</strong> ${quranRecitation || 'N/A'}</p>
-        <p><strong>Madrasa Background:</strong> ${madrasaBackground || 'N/A'} ${madrasaDetails ? `(${madrasaDetails})` : ''}</p>
+        ${isNonMuslimBool ? `
+          <p><strong>Applicant Status:</strong> <span style="background-color: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Non-Muslim Applicant</span></p>
+        ` : `
+          <p><strong>Knowledge Level:</strong> ${islamicKnowledgeLevel || 'N/A'}</p>
+          <p><strong>Quran Recitation:</strong> ${quranRecitation || 'N/A'}</p>
+          <p><strong>Madrasa Background:</strong> ${madrasaBackground || 'N/A'} ${madrasaDetails ? `(${madrasaDetails})` : ''}</p>
+        `}
 
         <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px;">5. Technical Skills & Portfolio</h2>
         <p><strong>Selected Skills:</strong> ${skills || 'N/A'}</p>
-        <p><strong>Portfolio Link:</strong> <a href="${portfolioLink}" target="_blank">${portfolioLink}</a></p>
+        <p><strong>Portfolio Link:</strong> ${portfolioLink ? `<a href="${portfolioLink}" target="_blank">${portfolioLink}</a>` : 'N/A'}</p>
         <p><strong>Years of Experience:</strong> ${yearsOfExp || 'N/A'}</p>
 
         <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px;">6. Preferred Role & Work Mode</h2>
@@ -157,14 +160,27 @@ router.post("/join", upload.single("image"), async (req, res) => {
         <p><strong>Why Join Kafa'ah:</strong> ${whyJoinKafaah || 'N/A'}</p>
         <p><strong>Contribution Vision:</strong> ${contributionVision || 'N/A'}</p>
 
-        <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px;">8. Hardware & Social Links</h2>
-        <p><strong>PC Specs:</strong> ${pcSpecs || 'N/A'}</p>
-        <p><strong>Internet & Backup:</strong> ${internetType || 'N/A'} (${powerBackup || 'N/A'})</p>
+        <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px;">8. Social Links & Referral</h2>
         <p><strong>LinkedIn:</strong> ${linkedin || 'N/A'} | <strong>Facebook:</strong> ${facebook || 'N/A'} | <strong>Telegram:</strong> ${telegram || 'N/A'}</p>
         <p><strong>Referral Source:</strong> ${referralSource || 'N/A'}</p>
         <p><strong>Comments:</strong> ${additionalComments || 'None'}</p>
       </div>
     `;
+
+    // Attachments array
+    const attachments: any[] = [
+      {
+        filename: imageFile.originalname,
+        content: imageFile.buffer,
+      }
+    ];
+
+    if (cvFile) {
+      attachments.push({
+        filename: cvFile.originalname,
+        content: cvFile.buffer,
+      });
+    }
 
     // 1. Send Admin Email
     const adminEmailResult = await resendClient.emails.send({
@@ -172,12 +188,7 @@ router.post("/join", upload.single("image"), async (req, res) => {
       to: "kafaahbd@gmail.com",
       subject: `[Join Request] ${fullNameEn} - ${primaryRole}`,
       html: adminHtmlContent,
-      attachments: [
-        {
-          filename: file.originalname,
-          content: file.buffer,
-        },
-      ],
+      attachments,
     });
 
     if (adminEmailResult.error) {
@@ -191,10 +202,10 @@ router.post("/join", upload.single("image"), async (req, res) => {
       subject: "Application Received - Team Kafa'ah",
       html: `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px;">
-          <h2 style="color: #059669;">Jazakallahu Khairan, ${fullNameEn}!</h2>
+          <h2 style="color: #059669;">Application Received, ${fullNameEn}!</h2>
           <p>Thank you for submitting your application to join <strong>Team Kafa'ah</strong>.</p>
-          <p>We have successfully received your 14-section application for the <strong>${primaryRole}</strong> position.</p>
-          <p>Our recruitment board will carefully review your credentials and portfolio. If shortlisted, you will receive an interview invitation via email or WhatsApp (${phone}).</p>
+          <p>We have successfully received your application for the <strong>${primaryRole}</strong> position.</p>
+          <p>Our recruitment board will carefully review your credentials and portfolio. If shortlisted, you will receive an interview invitation via email or phone/WhatsApp (${phone}).</p>
           <br/>
           <p style="color: #666; font-size: 13px;">Best regards,<br/><strong>Team Kafa'ah Recruitment Panel</strong><br/>Islamic Technology & Software Platform</p>
         </div>
