@@ -20,21 +20,35 @@ function getResend() {
 }
 
 async function sendEmailWithTimeout(emailData: any, timeoutMs: number = 15000) {
+  let timeoutId: NodeJS.Timeout | undefined;
   try {
+    console.log(`[Email Dispatch] [before Resend call] Preparing email request for: ${emailData.to}`);
     const resendClient = getResend();
+
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Resend email dispatch timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    console.log(`[Email Dispatch] [request started] Executing resend.emails.send for ${emailData.to}...`);
     const sendPromise = resendClient.emails.send(emailData);
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Resend email dispatch timed out after ${timeoutMs}ms`)), timeoutMs)
-    );
 
     const result: any = await Promise.race([sendPromise, timeoutPromise]);
+
     if (result && result.error) {
-      console.error("Resend API error:", result.error);
+      console.error("[Email Dispatch] [error received] Resend returned API error:", result.error);
+    } else {
+      console.log(`[Email Dispatch] [Resend response received] Success dispatch to ${emailData.to}, ID: ${result?.data?.id || result?.id || "OK"}`);
     }
     return result;
   } catch (err: any) {
-    console.error("Resend email send exception/timeout:", err?.message || err);
+    console.error("[Email Dispatch] [error received] Exception/Timeout during email send:", err?.message || err);
     return { error: err };
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -210,48 +224,52 @@ router.post("/join", upload.fields([
       </div>
     `;
 
-    // Attachments array
+    // Attachments array with explicit base64 conversion for Resend API payload efficiency
     const attachments: any[] = [];
 
     if (imageFile) {
       attachments.push({
         filename: imageFile.originalname,
-        content: imageFile.buffer,
+        content: imageFile.buffer.toString("base64"),
       });
     }
 
     if (cvFile) {
       attachments.push({
         filename: cvFile.originalname,
-        content: cvFile.buffer,
+        content: cvFile.buffer.toString("base64"),
       });
     }
 
-    // 1. Send Admin Email
-    await sendEmailWithTimeout({
-      from: "Kafa'ah Recruitment <noreply@kafaahbd.com>",
-      to: "kafaahbd@gmail.com",
-      subject: `[Join Request] ${fullNameEn} - ${primaryRole}`,
-      html: adminHtmlContent,
-      attachments,
-    });
+    // Dispatch both Admin Notification and User Confirmation Emails concurrently in parallel
+    const userHtmlContent = `
+      <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px;">
+        <h2 style="color: #059669;">Application Received, ${fullNameEn}!</h2>
+        <p>Thank you for submitting your application to join <strong>Team Kafa'ah</strong>.</p>
+        <p>We have successfully received your application for the <strong>${primaryRole}</strong> position.</p>
+        <p>Our recruitment board will carefully review your credentials and portfolio. If shortlisted, you will receive an interview invitation via email or phone/WhatsApp (${phone}).</p>
+        <br/>
+        <p style="color: #666; font-size: 13px;">Best regards,<br/><strong>Team Kafa'ah Recruitment Panel</strong><br/>Islamic Technology & Software Platform</p>
+      </div>
+    `;
 
-    // 2. Send User Confirmation Email
-    await sendEmailWithTimeout({
-      from: "Team Kafa'ah <noreply@kafaahbd.com>",
-      to: email,
-      subject: "Application Received - Team Kafa'ah",
-      html: `
-        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #eee; border-radius: 12px;">
-          <h2 style="color: #059669;">Application Received, ${fullNameEn}!</h2>
-          <p>Thank you for submitting your application to join <strong>Team Kafa'ah</strong>.</p>
-          <p>We have successfully received your application for the <strong>${primaryRole}</strong> position.</p>
-          <p>Our recruitment board will carefully review your credentials and portfolio. If shortlisted, you will receive an interview invitation via email or phone/WhatsApp (${phone}).</p>
-          <br/>
-          <p style="color: #666; font-size: 13px;">Best regards,<br/><strong>Team Kafa'ah Recruitment Panel</strong><br/>Islamic Technology & Software Platform</p>
-        </div>
-      `,
-    });
+    console.log("[Join Request] Dispatching emails for application:", fullNameEn);
+
+    await Promise.all([
+      sendEmailWithTimeout({
+        from: "Kafa'ah Recruitment <noreply@kafaahbd.com>",
+        to: "kafaahbd@gmail.com",
+        subject: `[Join Request] ${fullNameEn} - ${primaryRole}`,
+        html: adminHtmlContent,
+        attachments,
+      }),
+      sendEmailWithTimeout({
+        from: "Team Kafa'ah <noreply@kafaahbd.com>",
+        to: email,
+        subject: "Application Received - Team Kafa'ah",
+        html: userHtmlContent,
+      }),
+    ]);
 
     res.status(200).json({ success: true, message: "Application submitted successfully" });
   } catch (error: any) {
