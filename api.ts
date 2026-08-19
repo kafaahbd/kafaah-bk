@@ -19,6 +19,25 @@ function getResend() {
   return resend;
 }
 
+async function sendEmailWithTimeout(emailData: any, timeoutMs: number = 15000) {
+  try {
+    const resendClient = getResend();
+    const sendPromise = resendClient.emails.send(emailData);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Resend email dispatch timed out after ${timeoutMs}ms`)), timeoutMs)
+    );
+
+    const result: any = await Promise.race([sendPromise, timeoutPromise]);
+    if (result && result.error) {
+      console.error("Resend API error:", result.error);
+    }
+    return result;
+  } catch (err: any) {
+    console.error("Resend email send exception/timeout:", err?.message || err);
+    return { error: err };
+  }
+}
+
 router.post("/join", upload.fields([
   { name: "image", maxCount: 1 },
   { name: "cv", maxCount: 1 }
@@ -209,7 +228,7 @@ router.post("/join", upload.fields([
     }
 
     // 1. Send Admin Email
-    const adminEmailResult = await resendClient.emails.send({
+    await sendEmailWithTimeout({
       from: "Kafa'ah Recruitment <noreply@kafaahbd.com>",
       to: "kafaahbd@gmail.com",
       subject: `[Join Request] ${fullNameEn} - ${primaryRole}`,
@@ -217,12 +236,8 @@ router.post("/join", upload.fields([
       attachments,
     });
 
-    if (adminEmailResult.error) {
-      console.error("Resend Admin Email Error:", adminEmailResult.error);
-    }
-
     // 2. Send User Confirmation Email
-    const userEmailResult = await resendClient.emails.send({
+    await sendEmailWithTimeout({
       from: "Team Kafa'ah <noreply@kafaahbd.com>",
       to: email,
       subject: "Application Received - Team Kafa'ah",
@@ -237,10 +252,6 @@ router.post("/join", upload.fields([
         </div>
       `,
     });
-
-    if (userEmailResult.error) {
-      console.error("Resend User Email Error:", userEmailResult.error);
-    }
 
     res.status(200).json({ success: true, message: "Application submitted successfully" });
   } catch (error: any) {
