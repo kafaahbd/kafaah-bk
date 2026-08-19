@@ -69,16 +69,22 @@ router.post("/join", upload.fields([
       website,
       telegram,
       referralSource,
-      additionalComments
+      additionalComments,
+      imageLink,
+      cvLink,
+      isPurdahObserved
     } = req.body;
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
     const imageFile = files?.["image"]?.[0];
     const cvFile = files?.["cv"]?.[0];
 
+    const isPurdahBool = isPurdahObserved === "true" || isPurdahObserved === true;
+    const hasImage = imageFile || (imageLink && typeof imageLink === "string" && imageLink.trim() !== "");
+
     // Primary Validation
-    if (!fullNameEn || !email || !phone || !primaryRole || !imageFile) {
-      return res.status(400).json({ error: "Required fields (Full Name, Email, Phone/WhatsApp, Primary Role, Profile Picture) are missing." });
+    if (!fullNameEn || !email || !phone || !primaryRole || (!hasImage && !isPurdahBool)) {
+      return res.status(400).json({ error: "Required fields (Full Name, Email, Phone/WhatsApp, Primary Role, Profile Picture/Link or Purdah option) are missing." });
     }
 
     // Safely parse JSON string fields
@@ -102,6 +108,23 @@ router.post("/join", upload.fields([
 
     const isNonMuslimBool = isNotMuslim === "true" || isNotMuslim === true;
 
+    // Formatting image & CV info for email body
+    let imageInfoHtml = 'N/A';
+    if (isPurdahBool) {
+      imageInfoHtml = '<span style="background-color: #ecfdf5; color: #047857; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Purdah Observed (No Photo Provided)</span>';
+    } else if (imageFile) {
+      imageInfoHtml = `Attached (${imageFile.originalname})`;
+    } else if (imageLink) {
+      imageInfoHtml = `<a href="${imageLink}" target="_blank" style="color: #059669;">${imageLink}</a>`;
+    }
+
+    let cvInfoHtml = 'N/A';
+    if (cvFile) {
+      cvInfoHtml = `Attached (${cvFile.originalname})`;
+    } else if (cvLink) {
+      cvInfoHtml = `<a href="${cvLink}" target="_blank" style="color: #059669;">${cvLink}</a>`;
+    }
+
     const adminHtmlContent = `
       <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 800px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; padding: 24px;">
         <div style="background-color: #059669; padding: 20px; border-radius: 8px; text-align: center; color: #fff;">
@@ -117,7 +140,8 @@ router.post("/join", upload.fields([
         <p><strong>Emergency Contact:</strong> ${emergencyContact || 'N/A'}</p>
         <p><strong>Date of Birth:</strong> ${dob}</p>
         <p><strong>Blood Group:</strong> ${bloodGroup || 'N/A'}</p>
-        <p><strong>CV Attached:</strong> ${cvFile ? 'Yes (' + cvFile.originalname + ')' : 'No'}</p>
+        <p><strong>Profile Picture:</strong> ${imageInfoHtml}</p>
+        <p><strong>CV / Resume:</strong> ${cvInfoHtml}</p>
 
         <h2 style="color: #059669; border-bottom: 2px solid #059669; padding-bottom: 6px;">2. Address Details</h2>
         <p><strong>Present Address:</strong> ${formatAddress(parsedPresentAddr)}</p>
@@ -168,12 +192,14 @@ router.post("/join", upload.fields([
     `;
 
     // Attachments array
-    const attachments: any[] = [
-      {
+    const attachments: any[] = [];
+
+    if (imageFile) {
+      attachments.push({
         filename: imageFile.originalname,
         content: imageFile.buffer,
-      }
-    ];
+      });
+    }
 
     if (cvFile) {
       attachments.push({
